@@ -46,16 +46,16 @@ async function buscarSantuarioEmbeds() {
 
         if (!dados || !dados.data || !dados.data.perks) throw new Error('Dados da API em formato inválido');
 
-        // --- NOVA LÓGICA DO CONTADOR DIÁRIO ---
+        // --- NOVA LÓGICA DO CONTADOR PARA 3 DIAS ---
         const agora = new Date();
         const proximoReset = new Date();
         
         // Configura para as 15:00 UTC de hoje
         proximoReset.setUTCHours(15, 0, 0, 0);
 
-        // Se já passou das 15:00 UTC hoje, o próximo reset é amanhã
+        // Se já passou das 15:00 UTC hoje, o próximo reset é em 3 dias
         if (agora.getUTCHours() >= 15) {
-            proximoReset.setUTCDate(proximoReset.getUTCDate() + 1);
+            proximoReset.setUTCDate(proximoReset.getUTCDate() + 3);
         }
 
         const timestampUnix = Math.floor(proximoReset.getTime() / 1000);
@@ -64,7 +64,7 @@ async function buscarSantuarioEmbeds() {
         const mainEmbed = new EmbedBuilder()
             .setTitle('💠 Santuário dos Segredos - Dead by Daylight')
             .setColor('#8a2be2')
-            .setDescription(`Confira as vantagens disponíveis nesta rotação diária!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
+            .setDescription(`Confira as vantagens disponíveis nesta rotação!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
             .setThumbnail('https://nightlight.gg/images/shrine/shrine.png')
             .setFooter({ text: 'Atualização Automática via Nightlight.gg' })
             .setTimestamp();
@@ -133,10 +133,9 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
-    // --- MUDANÇA NO CRON ---
-    // '5 12 * * *' significa: minuto 5, hora 12, todos os dias do mês, todos os meses, todos os dias da semana.
-    cron.schedule('5 12 * * *', async () => {
-        console.log('🔄 Atualização automática diária do Santuário iniciada (Múltiplos Servidores)...');
+    // --- MUDANÇA NO CRON PARA RODAR A CADA 3 DIAS ---
+    cron.schedule('5 12 */3 * *', async () => {
+        console.log('🔄 Atualização automática do Santuário iniciada (Múltiplos Servidores)...');
         try {
             const embeds = await buscarSantuarioEmbeds();
             if (!embeds || embeds.length === 0) {
@@ -150,7 +149,7 @@ client.once('ready', async () => {
                 try {
                     const canal = await client.channels.fetch(channelId);
                     if (canal && canal.isTextBased()) {
-                        await canal.send({ content: '🔔 **O Santuário diário atualizou!**', embeds: embeds });
+                        await canal.send({ content: '🔔 **O Santuário atualizou!**', embeds: embeds });
                         console.log(`✅ Santuário enviado para o servidor ${guildId}`);
                     }
                 } catch (error) {
@@ -164,7 +163,8 @@ client.once('ready', async () => {
         timezone: "America/Sao_Paulo"
     });
     
-    console.log('⏰ Agendamento configurado: Todos os dias às 12:05 (BRT)');
+    // --- TEXTO DE LOG ATUALIZADO ---
+    console.log('⏰ Agendamento configurado: A cada 3 dias às 12:05 (BRT)');
 });
 
 client.on('interactionCreate', async interaction => {
@@ -174,7 +174,7 @@ client.on('interactionCreate', async interaction => {
         const canal = interaction.options.getChannel('canal');
         
         salvarCanal(interaction.guildId, canal.id);
-        return interaction.reply({ content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário todos os dias aqui.` });
+        return interaction.reply({ content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 3 dias aqui.` });
     }
 
     if (interaction.commandName === 'shrine') {
