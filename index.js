@@ -26,7 +26,6 @@ const CLIENT_ID = process.env.CLIENT_ID;
 
 const DB_PATH = './canais.json';
 
-// --- TEXTOS E IMAGENS DE CRÉDITO PADRÃO ---
 const CREDITO_BOT = 'Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".';
 const CREDITO_TEXTO = '\n\n*Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".*';
 const URL_FOTO_DEV = 'https://avatars.githubusercontent.com/Antonizinhobr';
@@ -63,20 +62,16 @@ async function buscarSantuarioEmbeds() {
 
         if (!dados || !dados.data || !dados.data.perks) throw new Error('Dados da API em formato inválido');
 
-        // --- NOVA LÓGICA DO CONTADOR PARA 3 DIAS ---
         const agora = new Date();
         const proximoReset = new Date();
         
-        // Configura para as 15:00 UTC de hoje
         proximoReset.setUTCHours(15, 0, 0, 0);
 
-        // Se já passou das 15:00 UTC hoje, o próximo reset é em 3 dias
         if (agora.getUTCHours() >= 15) {
             proximoReset.setUTCDate(proximoReset.getUTCDate() + 3);
         }
 
         const timestampUnix = Math.floor(proximoReset.getTime() / 1000);
-        // -------------------------------------
 
         const mainEmbed = new EmbedBuilder()
             .setTitle('💠 Santuário dos Segredos - Dead by Daylight')
@@ -153,7 +148,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
-    // --- MUDANÇA NO CRON PARA RODAR A CADA 3 DIAS ---
     cron.schedule('5 12 */3 * *', async () => {
         console.log('🔄 Atualização automática do Santuário iniciada (Múltiplos Servidores)...');
         try {
@@ -183,7 +177,6 @@ client.once('ready', async () => {
         timezone: "America/Sao_Paulo"
     });
     
-    // --- TEXTO DE LOG ATUALIZADO ---
     console.log('⏰ Agendamento configurado: A cada 3 dias às 12:05 (BRT)');
 });
 
