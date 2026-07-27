@@ -26,9 +26,10 @@ const CLIENT_ID = process.env.CLIENT_ID;
 
 const DB_PATH = './canais.json';
 
-// --- TEXTOS DE CRÉDITO PADRÃO ---
+// --- TEXTOS E IMAGENS DE CRÉDITO PADRÃO ---
 const CREDITO_BOT = 'Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".';
 const CREDITO_TEXTO = '\n\n*Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".*';
+const URL_FOTO_DEV = 'https://avatars.githubusercontent.com/Antonizinhobr';
 
 function lerCanais() {
     if (!fs.existsSync(DB_PATH)) {
@@ -82,7 +83,7 @@ async function buscarSantuarioEmbeds() {
             .setColor('#8a2be2')
             .setDescription(`Confira as vantagens disponíveis nesta rotação!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
             .setThumbnail('https://nightlight.gg/images/shrine/shrine.png')
-            .setFooter({ text: `Atualização Automática via Nightlight.gg | ${CREDITO_BOT}` })
+            .setFooter({ text: `Atualização Automática via Nightlight.gg | ${CREDITO_BOT}`, iconURL: URL_FOTO_DEV })
             .setTimestamp();
 
         const listaDeEmbeds = [mainEmbed];
@@ -219,9 +220,10 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'contato') {
         const embedContato = new EmbedBuilder()
             .setColor('#5865F2')
+            .setAuthor({ name: '👨‍💻 Anthonny Michael', iconURL: URL_FOTO_DEV })
             .setTitle('📱 Entre em Contato com o Desenvolvedor')
             .setDescription('Olá! Sou o **Anthonny Michael**, desenvolvedor deste bot. Fique à vontade para entrar em contato comigo através das minhas redes sociais abaixo, caso tenha algum problema ou dúvida sobre o bot:')
-            .setThumbnail('https://avatars.githubusercontent.com/Antonizinhobr')
+            .setThumbnail(URL_FOTO_DEV)
             .addFields(
                 { 
                     name: '👨‍💻 Sobre Mim', 
@@ -234,7 +236,7 @@ client.on('interactionCreate', async interaction => {
                     inline: false 
                 }
             )
-            .setFooter({ text: CREDITO_BOT })
+            .setFooter({ text: CREDITO_BOT, iconURL: URL_FOTO_DEV })
             .setTimestamp();
 
         const row = new ActionRowBuilder()
