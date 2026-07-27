@@ -1,5 +1,17 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, EmbedBuilder, REST, Routes, SlashCommandBuilder, PermissionsBitField, ChannelType } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    EmbedBuilder, 
+    REST, 
+    Routes, 
+    SlashCommandBuilder, 
+    PermissionsBitField, 
+    ChannelType,
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 const cron = require('node-cron');
 const fs = require('fs');
 
@@ -13,6 +25,10 @@ const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
 const DB_PATH = './canais.json';
+
+// --- TEXTOS DE CRÉDITO PADRÃO ---
+const CREDITO_BOT = 'Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".';
+const CREDITO_TEXTO = '\n\n*Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".*';
 
 function lerCanais() {
     if (!fs.existsSync(DB_PATH)) {
@@ -66,7 +82,7 @@ async function buscarSantuarioEmbeds() {
             .setColor('#8a2be2')
             .setDescription(`Confira as vantagens disponíveis nesta rotação!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
             .setThumbnail('https://nightlight.gg/images/shrine/shrine.png')
-            .setFooter({ text: 'Atualização Automática via Nightlight.gg' })
+            .setFooter({ text: `Atualização Automática via Nightlight.gg | ${CREDITO_BOT}` })
             .setTimestamp();
 
         const listaDeEmbeds = [mainEmbed];
@@ -115,7 +131,10 @@ const commands = [
                 .setRequired(true)
                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
         )
-        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+        .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+    new SlashCommandBuilder()
+        .setName('contato')
+        .setDescription('📱 Entre em contato com o desenvolvedor do bot')
 ].map(command => command.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -174,7 +193,10 @@ client.on('interactionCreate', async interaction => {
         const canal = interaction.options.getChannel('canal');
         
         salvarCanal(interaction.guildId, canal.id);
-        return interaction.reply({ content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 3 dias aqui.` });
+        return interaction.reply({ 
+            content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 3 dias aqui.${CREDITO_TEXTO}`,
+            ephemeral: true 
+        });
     }
 
     if (interaction.commandName === 'shrine') {
@@ -186,12 +208,73 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply({ embeds: embeds });
                 console.log(`✅ Comando /shrine executado por ${interaction.user.tag} no servidor ${interaction.guildId}`);
             } else {
-                await interaction.editReply('❌ Erro ao buscar o Santuário. Tente novamente mais tarde.');
+                await interaction.editReply(`❌ Erro ao buscar o Santuário. Tente novamente mais tarde.${CREDITO_TEXTO}`);
             }
         } catch (error) {
             console.error('❌ Erro no comando /shrine:', error);
-            await interaction.editReply('❌ Ocorreu um erro ao processar sua solicitação.');
+            await interaction.editReply(`❌ Ocorreu um erro ao processar sua solicitação.${CREDITO_TEXTO}`);
         }
+    }
+
+    if (interaction.commandName === 'contato') {
+        const embedContato = new EmbedBuilder()
+            .setColor('#5865F2')
+            .setTitle('📱 Entre em Contato com o Desenvolvedor')
+            .setDescription('Olá! Sou o **Anthonny Michael**, desenvolvedor deste bot. Fique à vontade para entrar em contato comigo através das minhas redes sociais abaixo, caso tenha algum problema ou dúvida sobre o bot:')
+            .setThumbnail('https://avatars.githubusercontent.com/Antonizinhobr')
+            .addFields(
+                { 
+                    name: '👨‍💻 Sobre Mim', 
+                    value: 'Sou um desenvolvedor apaixonado por tecnologia e automação. Este bot foi criado para manter a comunidade atualizada sobre o Santuário dos Segredos!',
+                    inline: false 
+                },
+                { 
+                    name: '📱 Redes Sociais', 
+                    value: 'Clique nos botões abaixo para me seguir e acompanhar meu trabalho!',
+                    inline: false 
+                }
+            )
+            .setFooter({ text: CREDITO_BOT })
+            .setTimestamp();
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('📸 Instagram')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://www.instagram.com/_ofcanthonny_santos__/')
+                    .setEmoji('📸'),
+                new ButtonBuilder()
+                    .setLabel('🎵 TikTok')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://www.tiktok.com/@anthonny_secbr')
+                    .setEmoji('🎵'),
+                new ButtonBuilder()
+                    .setLabel('💼 LinkedIn')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://www.linkedin.com/in/anthonny-michael/')
+                    .setEmoji('💼'),
+                new ButtonBuilder()
+                    .setLabel('🐙 GitHub')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://github.com/Antonizinhobr')
+                    .setEmoji('🐙')
+            );
+
+        const row2 = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setLabel('💬 Discord')
+                    .setStyle(ButtonStyle.Link)
+                    .setURL('https://discord.com/users/anthonnybrbr')
+                    .setEmoji('💬')
+            );
+
+        return interaction.reply({ 
+            embeds: [embedContato], 
+            components: [row, row2],
+            ephemeral: true 
+        });
     }
 });
 
