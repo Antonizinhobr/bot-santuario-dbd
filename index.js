@@ -78,7 +78,7 @@ async function buscarSantuarioEmbeds() {
             .setColor('#8a2be2')
             .setDescription(`Confira as vantagens disponíveis nesta rotação!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
             .setThumbnail('https://nightlight.gg/images/shrine/shrine.png')
-            .setFooter({ text: `Atualização Automática via Nightlight.gg | ${CREDITO_BOT}`, iconURL: URL_FOTO_DEV })
+            .setFooter({ text: `${CREDITO_BOT}`, iconURL: URL_FOTO_DEV })
             .setTimestamp();
 
         const listaDeEmbeds = [mainEmbed];
