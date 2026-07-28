@@ -10,10 +10,15 @@ const {
     ChannelType,
     ActionRowBuilder, 
     ButtonBuilder, 
-    ButtonStyle 
+    ButtonStyle,
+    AttachmentBuilder
 } = require('discord.js');
 const cron = require('node-cron');
 const fs = require('fs');
+const path = require('path');
+const Jimp = require('jimp');
+const axios = require('axios');
+const sharp = require('sharp'); 
 
 if (!process.env.TOKEN || !process.env.CLIENT_ID) {
     console.error('❌ Erro: Variáveis de ambiente não configuradas corretamente!');
@@ -24,11 +29,18 @@ if (!process.env.TOKEN || !process.env.CLIENT_ID) {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
+// Seu ID do Discord configurado para segurança do comando /atualizar
+const SEU_DISCORD_ID = '1400218900284571689'; 
+
 const DB_PATH = './canais.json';
+const ASSET_BASE_PATH = path.join(__dirname, 'assets', 'shrine_base.png');
+const TEMP_IMAGE_PATH = path.join(__dirname, 'assets', 'temp_shrine.png');
 
 const CREDITO_BOT = 'Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".';
 const CREDITO_TEXTO = '\n\n*Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".*';
 const URL_FOTO_DEV = 'https://avatars.githubusercontent.com/Antonizinhobr';
+
+const POSICOES_EMOJI = ['⬆️', '⬅️', '➡️', '⬇️'];
 
 function lerCanais() {
     if (!fs.existsSync(DB_PATH)) {
@@ -54,6 +66,56 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
+async function gerarImagemSantuario(perks) {
+    try {
+        console.log('🖼️ Iniciando a composição da imagem...');
+        const baseImage = await Jimp.read(ASSET_BASE_PATH);
+        
+        const iconSize = 420; 
+        const offset = (iconSize / 2) + 15; 
+
+        const cx = baseImage.getWidth() / 2;
+        const cy = baseImage.getHeight() / 2;
+
+        const positions = [
+            { x: cx - (iconSize / 2), y: cy - (iconSize / 2) - offset },  // Topo (⬆️)
+            { x: cx - (iconSize / 2) - offset, y: cy - (iconSize / 2) },  // Esquerda (⬅️)
+            { x: cx - (iconSize / 2) + offset, y: cy - (iconSize / 2) },  // Direita (➡️)
+            { x: cx - (iconSize / 2), y: cy - (iconSize / 2) + offset }   // Baixo (⬇️)
+        ];
+
+        for (let i = 0; i < Math.min(perks.length, 4); i++) {
+            const perk = perks[i];
+            if (!perk.image) continue;
+
+            const iconUrl = `https://cdn.nightlight.gg/img/${perk.image}`;
+            
+            const response = await axios.get(iconUrl, { responseType: 'arraybuffer' });
+            
+            const pngBuffer = await sharp(Buffer.from(response.data))
+                .png()
+                .toBuffer();
+
+            const perkIcon = await Jimp.read(pngBuffer);
+
+            perkIcon.resize(iconSize, iconSize);
+
+            baseImage.composite(perkIcon, positions[i].x, positions[i].y, {
+                mode: Jimp.BLEND_SOURCE_OVER,
+                opacitySource: 1
+            });
+        }
+
+        await baseImage.writeAsync(TEMP_IMAGE_PATH);
+        console.log('✅ Imagem composta gerada com sucesso e centralizada!');
+        
+        return new AttachmentBuilder(TEMP_IMAGE_PATH, { name: 'shrine.png' });
+    } catch (error) {
+        console.error('❌ Erro ao gerar a imagem:', error);
+        return null;
+    }
+}
+
 async function buscarSantuarioEmbeds() {
     try {
         const response = await fetch('https://api.nightlight.gg/v1/shrine');
@@ -71,53 +133,87 @@ async function buscarSantuarioEmbeds() {
             proximoReset.setUTCDate(proximoReset.getUTCDate() + 3);
         }
 
-        const timestampUnix = Math.floor(proximoReset.getTime() / 1000);
+        const dataFim = proximoReset;
+        const dataInicio = new Date(proximoReset.getTime() - (7 * 24 * 60 * 60 * 1000)); 
 
-        const mainEmbed = new EmbedBuilder()
-            .setTitle('💠 Santuário dos Segredos - Dead by Daylight')
-            .setColor('#8a2be2')
-            .setDescription(`Confira as vantagens disponíveis nesta rotação!\n\n⏳ **Próxima rotação:** <t:${timestampUnix}:R>\n📅 **Data:** <t:${timestampUnix}:F>`)
-            .setThumbnail('https://nightlight.gg/images/shrine/shrine.png')
-            .setFooter({ text: `${CREDITO_BOT}`, iconURL: URL_FOTO_DEV })
-            .setTimestamp();
+        const formatadorData = new Intl.DateTimeFormat('pt-BR', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/Sao_Paulo'
+        });
 
-        const listaDeEmbeds = [mainEmbed];
+        const inicioTexto = formatadorData.format(dataInicio).replace(' às ', ' ');
+        const fimTexto = formatadorData.format(dataFim).replace(' às ', ' ');
 
+        let listaPerks = '';
         if (dados.data.perks.length > 0) {
-            dados.data.perks.forEach(perk => {
+            dados.data.perks.forEach((perk, index) => {
                 const nomePerk = perk.name || 'Desconhecido';
-                const dono = perk.character || 'Vantagem Universal';
-                const custo = perk.shards || 'N/A';
-                const uso = perk.usage_tier ? perk.usage_tier.toUpperCase() : 'N/A';
-                const urlImagem = perk.image ? `https://cdn.nightlight.gg/img/${perk.image}` : 'https://nightlight.gg/images/shrine/shrine.png';
-
-                const perkEmbed = new EmbedBuilder()
-                    .setColor('#2b2d31')
-                    .setAuthor({ name: dono, iconURL: urlImagem })
-                    .setTitle(`✨ ${nomePerk}`)
-                    .setThumbnail(urlImagem)
-                    .addFields(
-                        { name: '💎 Custo', value: `\`${custo}\` Fragmentos`, inline: true },
-                        { name: '📈 Taxa de Uso', value: `\`${uso}\``, inline: true }
-                    );
-                
-                listaDeEmbeds.push(perkEmbed);
+                const emojiPosicao = POSICOES_EMOJI[index] || '•';
+                listaPerks += `${emojiPosicao} **${nomePerk}**\n`;
             });
         } else {
-            mainEmbed.addFields({ name: '⚠️ Aviso', value: 'Nenhuma vantagem encontrada na rotação atual.' });
+            listaPerks = '⚠️ Nenhuma vantagem encontrada na rotação atual.\n';
         }
+
+        const description = `**Perks**\n\n${listaPerks}\n**Data**\n\nIniciou dia: \`${inicioTexto}\`\nTermina dia: \`${fimTexto}\``;
+
+        const imageAttachment = await gerarImagemSantuario(dados.data.perks);
         
-        return listaDeEmbeds;
+        if (!imageAttachment) {
+             throw new Error('Falha na geração da imagem');
+        }
+
+        const mainEmbed = new EmbedBuilder()
+            .setTitle('💠 Santuário dos Segredos')
+            .setColor('#2b2d31')
+            .setDescription(description)
+            .setImage('attachment://shrine.png')
+            .setFooter({ text: CREDITO_BOT, iconURL: URL_FOTO_DEV })
+            .setTimestamp();
+
+        return { embeds: [mainEmbed], files: [imageAttachment] };
     } catch (error) {
-        console.error('❌ Erro ao buscar API:', error.message);
+        console.error('❌ Erro ao buscar API ou gerar imagem:', error.message);
         return null;
     }
+}
+
+async function dispararAtualizacaoGeral() {
+    console.log('🔄 Disparando atualização global do Santuário...');
+    const result = await buscarSantuarioEmbeds();
+    if (!result || !result.embeds || result.embeds.length === 0) {
+        throw new Error('Falha ao obter embeds do Santuário.');
+    }
+
+    const canaisConfigurados = lerCanais();
+    let enviados = 0;
+    let erros = 0;
+
+    for (const [guildId, channelId] of Object.entries(canaisConfigurados)) {
+        try {
+            const canal = await client.channels.fetch(channelId);
+            if (canal && canal.isTextBased()) {
+                await canal.send({ content: '🔔 **O Santuário atualizou!**', ...result });
+                console.log(`✅ Santuário enviado para o canal ${channelId} no servidor ${guildId}`);
+                enviados++;
+            }
+        } catch (error) {
+            console.error(`❌ Erro ao enviar para o canal ${channelId} no servidor ${guildId}:`, error.message);
+            erros++;
+        }
+    }
+
+    return { enviados, erros };
 }
 
 const commands = [
     new SlashCommandBuilder()
         .setName('shrine')
-        .setDescription('Mostra o santuário atual do DBD com imagens e contador'),
+        .setDescription('Mostra o santuário atual do DBD com a imagem composta'),
     new SlashCommandBuilder()
         .setName('setcanal')
         .setDescription('Define o canal onde o bot enviará as atualizações automáticas')
@@ -128,6 +224,9 @@ const commands = [
                 .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
         )
         .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+    new SlashCommandBuilder()
+        .setName('atualizar')
+        .setDescription('⚡ [DONO] Força o envio imediato da atualização do Santuário para todos os canais'),
     new SlashCommandBuilder()
         .setName('contato')
         .setDescription('📱 Entre em contato com o desenvolvedor do bot')
@@ -149,27 +248,8 @@ client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
     cron.schedule('5 12 */3 * *', async () => {
-        console.log('🔄 Atualização automática do Santuário iniciada (Múltiplos Servidores)...');
         try {
-            const embeds = await buscarSantuarioEmbeds();
-            if (!embeds || embeds.length === 0) {
-                console.error('❌ Falha ao obter embeds para envio automático');
-                return;
-            }
-
-            const canaisConfigurados = lerCanais();
-
-            for (const [guildId, channelId] of Object.entries(canaisConfigurados)) {
-                try {
-                    const canal = await client.channels.fetch(channelId);
-                    if (canal && canal.isTextBased()) {
-                        await canal.send({ content: '🔔 **O Santuário atualizou!**', embeds: embeds });
-                        console.log(`✅ Santuário enviado para o servidor ${guildId}`);
-                    }
-                } catch (error) {
-                    console.error(`❌ Erro ao enviar para o canal ${channelId} no servidor ${guildId}:`, error.message);
-                }
-            }
+            await dispararAtualizacaoGeral();
         } catch (error) {
             console.error('❌ Erro na execução automática:', error);
         }
@@ -193,13 +273,34 @@ client.on('interactionCreate', async interaction => {
         });
     }
 
+    if (interaction.commandName === 'atualizar') {
+        if (interaction.user.id !== SEU_DISCORD_ID) {
+            return interaction.reply({ 
+                content: '❌ Apenas o desenvolvedor do bot pode executar esse comando global.', 
+                ephemeral: true 
+            });
+        }
+
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const relatorio = await dispararAtualizacaoGeral();
+            await interaction.editReply({ 
+                content: `🚀 **Atualização disparada com sucesso!**\n\n✅ **Enviados:** ${relatorio.enviados} servidor(es)\n❌ **Falhas:** ${relatorio.erros} servidor(es)`
+            });
+        } catch (error) {
+            console.error('❌ Erro no comando /atualizar:', error);
+            await interaction.editReply({ content: '❌ Ocorreu um erro ao disparar a atualização geral.' });
+        }
+    }
+
     if (interaction.commandName === 'shrine') {
         await interaction.deferReply();
 
         try {
-            const embeds = await buscarSantuarioEmbeds();
-            if (embeds && embeds.length > 0) {
-                await interaction.editReply({ embeds: embeds });
+            const result = await buscarSantuarioEmbeds();
+            if (result && result.embeds && result.embeds.length > 0) {
+                await interaction.editReply(result);
                 console.log(`✅ Comando /shrine executado por ${interaction.user.tag} no servidor ${interaction.guildId}`);
             } else {
                 await interaction.editReply(`❌ Erro ao buscar o Santuário. Tente novamente mais tarde.${CREDITO_TEXTO}`);
