@@ -130,7 +130,7 @@ async function buscarSantuarioEmbeds() {
         proximoReset.setUTCHours(15, 0, 0, 0);
 
         if (agora.getUTCHours() >= 15) {
-            proximoReset.setUTCDate(proximoReset.getUTCDate() + 3);
+            proximoReset.setUTCDate(proximoReset.getUTCDate() + 7);
         }
 
         const dataFim = proximoReset;
@@ -247,7 +247,7 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
-    cron.schedule('5 12 */3 * *', async () => {
+    cron.schedule('5 12 */7 * *', async () => {
         try {
             await dispararAtualizacaoGeral();
         } catch (error) {
@@ -257,7 +257,7 @@ client.once('ready', async () => {
         timezone: "America/Sao_Paulo"
     });
     
-    console.log('⏰ Agendamento configurado: A cada 3 dias às 12:05 (BRT)');
+    console.log('⏰ Agendamento configurado: A cada 7 dias às 12:05 (BRT)');
 });
 
 client.on('interactionCreate', async interaction => {
@@ -268,7 +268,7 @@ client.on('interactionCreate', async interaction => {
         
         salvarCanal(interaction.guildId, canal.id);
         return interaction.reply({ 
-            content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 3 dias aqui.${CREDITO_TEXTO}`,
+            content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 7 dias aqui.${CREDITO_TEXTO}`,
             ephemeral: true 
         });
     }
