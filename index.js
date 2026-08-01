@@ -124,17 +124,24 @@ async function buscarSantuarioEmbeds() {
 
         if (!dados || !dados.data || !dados.data.perks) throw new Error('Dados da API em formato inválido');
 
+        // 📅 Lógica corrigida: Travando o ciclo de Terça a Terça
         const agora = new Date();
-        const proximoReset = new Date();
+        let dataInicio = new Date(agora);
+        let diaSemana = dataInicio.getUTCDay(); // 0 = Domingo, 2 = Terça
         
-        proximoReset.setUTCHours(15, 0, 0, 0);
-
-        if (agora.getUTCHours() >= 15) {
-            proximoReset.setUTCDate(proximoReset.getUTCDate() + 7);
+        let diasParaTerca = (diaSemana >= 2) ? (diaSemana - 2) : (diaSemana + 5);
+        
+        // Se for terça-feira, mas antes das 15:00 UTC (12:00 BRT), pertence à semana anterior
+        if (diaSemana === 2 && agora.getUTCHours() < 15) {
+            diasParaTerca += 7;
         }
+        
+        dataInicio.setUTCDate(dataInicio.getUTCDate() - diasParaTerca);
+        dataInicio.setUTCHours(15, 0, 0, 0); // 15:00 UTC = 12:00 BRT
 
-        const dataFim = proximoReset;
-        const dataInicio = new Date(proximoReset.getTime() - (7 * 24 * 60 * 60 * 1000)); 
+        // O fim é exatamente 7 dias depois do início
+        const dataFim = new Date(dataInicio);
+        dataFim.setUTCDate(dataFim.getUTCDate() + 7);
 
         const formatadorData = new Intl.DateTimeFormat('pt-BR', {
             day: '2-digit',
@@ -247,7 +254,8 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
-    cron.schedule('5 12 */7 * *', async () => {
+    // Configurado para rodar exatamente toda TERÇA-FEIRA (2) às 12:05
+    cron.schedule('5 12 * * 2', async () => {
         try {
             await dispararAtualizacaoGeral();
         } catch (error) {
@@ -257,7 +265,7 @@ client.once('ready', async () => {
         timezone: "America/Sao_Paulo"
     });
     
-    console.log('⏰ Agendamento configurado: A cada 7 dias às 12:05 (BRT)');
+    console.log('⏰ Agendamento configurado: Toda Terça-feira às 12:05 (BRT)');
 });
 
 client.on('interactionCreate', async interaction => {
