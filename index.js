@@ -19,6 +19,8 @@ const path = require('path');
 const Jimp = require('jimp');
 const axios = require('axios');
 const sharp = require('sharp'); 
+const express = require('express');
+const cors = require('cors');
 
 if (!process.env.TOKEN || !process.env.CLIENT_ID) {
     console.error('❌ Erro: Variáveis de ambiente não configuradas corretamente!');
@@ -29,7 +31,6 @@ if (!process.env.TOKEN || !process.env.CLIENT_ID) {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-// Seu ID do Discord configurado para segurança do comando /atualizar
 const SEU_DISCORD_ID = '1400218900284571689'; 
 
 const DB_PATH = './canais.json';
@@ -124,22 +125,19 @@ async function buscarSantuarioEmbeds() {
 
         if (!dados || !dados.data || !dados.data.perks) throw new Error('Dados da API em formato inválido');
 
-        // 📅 Lógica corrigida: Travando o ciclo de Terça a Terça
         const agora = new Date();
         let dataInicio = new Date(agora);
-        let diaSemana = dataInicio.getUTCDay(); // 0 = Domingo, 2 = Terça
+        let diaSemana = dataInicio.getUTCDay();
         
         let diasParaTerca = (diaSemana >= 2) ? (diaSemana - 2) : (diaSemana + 5);
         
-        // Se for terça-feira, mas antes das 15:00 UTC (12:00 BRT), pertence à semana anterior
         if (diaSemana === 2 && agora.getUTCHours() < 15) {
             diasParaTerca += 7;
         }
         
         dataInicio.setUTCDate(dataInicio.getUTCDate() - diasParaTerca);
-        dataInicio.setUTCHours(15, 0, 0, 0); // 15:00 UTC = 12:00 BRT
+        dataInicio.setUTCHours(15, 0, 0, 0);
 
-        // O fim é exatamente 7 dias depois do início
         const dataFim = new Date(dataInicio);
         dataFim.setUTCDate(dataFim.getUTCDate() + 7);
 
@@ -254,7 +252,6 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 client.once('ready', async () => {
     console.log(`🤖 Bot online! Logado como ${client.user.tag}`);
 
-    // Configurado para rodar exatamente toda TERÇA-FEIRA (2) às 12:05
     cron.schedule('5 12 * * 2', async () => {
         try {
             await dispararAtualizacaoGeral();
@@ -384,6 +381,27 @@ client.on('interactionCreate', async interaction => {
 
 client.on('error', (error) => console.error('❌ Erro no cliente Discord:', error));
 client.on('disconnect', () => console.log('⚠️ Bot desconectado. Tentando reconectar...'));
+
+
+const app = express();
+app.use(cors());
+
+app.get('/', (req, res) => {
+    res.send('✅ A API do Refúgio da Névoa está Online e operante!');
+});
+
+app.get('/api/shrine', async (req, res) => {
+    try {
+        const response = await axios.get('https://api.nightlight.gg/v1/shrine');
+        res.json(response.data);
+    } catch (error) {
+        console.error('❌ Erro na API do site:', error.message);
+        res.status(500).json({ error: 'Erro ao buscar santuário' });
+    }
+});
+
+const PORT = process.env.PORT || 8080;
+app.listen(PORT, () => console.log(`🌐 API do Dashboard rodando na porta ${PORT}`));
 
 console.log('⏳ Conectando à Entidade...');
 client.login(TOKEN).catch(error => {
