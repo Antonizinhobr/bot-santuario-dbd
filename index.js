@@ -1,15 +1,15 @@
 require('dotenv').config();
-const { 
-    Client, 
-    GatewayIntentBits, 
-    EmbedBuilder, 
-    REST, 
-    Routes, 
-    SlashCommandBuilder, 
-    PermissionsBitField, 
+const {
+    Client,
+    GatewayIntentBits,
+    EmbedBuilder,
+    REST,
+    Routes,
+    SlashCommandBuilder,
+    PermissionsBitField,
     ChannelType,
-    ActionRowBuilder, 
-    ButtonBuilder, 
+    ActionRowBuilder,
+    ButtonBuilder,
     ButtonStyle,
     AttachmentBuilder
 } = require('discord.js');
@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const Jimp = require('jimp');
 const axios = require('axios');
-const sharp = require('sharp'); 
+const sharp = require('sharp');
 const express = require('express');
 const cors = require('cors');
 
@@ -31,17 +31,41 @@ if (!process.env.TOKEN || !process.env.CLIENT_ID) {
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 
-const SEU_DISCORD_ID = '1400218900284571689'; 
+const SEU_DISCORD_ID = '1400218900284571689';
 
 const DB_PATH = './canais.json';
 const ASSET_BASE_PATH = path.join(__dirname, 'assets', 'shrine_base.png');
-const TEMP_IMAGE_PATH = path.join(__dirname, 'assets', 'temp_shrine.png');
 
-const CREDITO_BOT = 'Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".';
-const CREDITO_TEXTO = '\n\n*Bot desenvolvido por Anthonny Michael, entre em contato com o comando "/contato".*';
 const URL_FOTO_DEV = 'https://avatars.githubusercontent.com/Antonizinhobr';
 
+// ───────────────────────── Identidade visual do Santuário ─────────────────────────
+const COR_SANTUARIO = 0x8A2BE2; // roxo do Santuário (combina com a arte da imagem)
+const URL_WIKI_SANTUARIO = 'https://deadbydaylight.fandom.com/wiki/Shrine_of_Secrets';
+const URL_PERKS_NIGHTLIGHT = 'https://nightlight.gg/perks/'; // página da perk com descrição e estatísticas de uso
 const POSICOES_EMOJI = ['⬆️', '⬅️', '➡️', '⬇️'];
+const ESPACO = '​';
+
+// usage_tier vem da API do Nightlight
+const POPULARIDADE = {
+    veryhigh: { barra: '▰▰▰▰▰', texto: 'Muito alta' },
+    high:     { barra: '▰▰▰▰▱', texto: 'Alta' },
+    average:  { barra: '▰▰▰▱▱', texto: 'Média' },
+    low:      { barra: '▰▰▱▱▱', texto: 'Baixa' },
+    verylow:  { barra: '▰▱▱▱▱', texto: 'Muito baixa' }
+};
+
+const formatarNumero = (n) => new Intl.NumberFormat('pt-BR').format(n);
+// Timestamps nativos do Discord: cada pessoa vê no próprio fuso, e o estilo "R" vira contagem regressiva ao vivo
+const timestampDiscord = (data, estilo) => `<t:${Math.floor(data.getTime() / 1000)}:${estilo}>`;
+
+// IDs dos comandos registrados, para gerar menções clicáveis tipo </contato:123>
+const idsComandos = {};
+function mencionarComando(nome) {
+    return idsComandos[nome] ? `</${nome}:${idsComandos[nome]}>` : `**/${nome}**`;
+}
+function linhaContato(texto = 'Dúvidas ou sugestões? Fale com o desenvolvedor:') {
+    return `-# 💬 ${texto} ${mencionarComando('contato')}`;
+}
 
 function lerCanais() {
     if (!fs.existsSync(DB_PATH)) {
@@ -67,13 +91,30 @@ const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages]
 });
 
-async function gerarImagemSantuario(perks) {
+// ───────────────────────── Imagem (gerada em memória + cache por semana) ─────────────────────────
+let cacheImagem = { chave: null, buffer: null };
+
+async function baixarIcone(perk) {
+    const { data } = await axios.get(`https://cdn.nightlight.gg/img/${perk.image}`, {
+        responseType: 'arraybuffer',
+        timeout: 15000
+    });
+    const pngBuffer = await sharp(Buffer.from(data)).png().toBuffer();
+    return Jimp.read(pngBuffer);
+}
+
+async function gerarImagemSantuario(perks, chave) {
+    if (chave && cacheImagem.chave === chave && cacheImagem.buffer) {
+        console.log('⚡ Imagem do Santuário servida do cache.');
+        return cacheImagem.buffer;
+    }
+
     try {
         console.log('🖼️ Iniciando a composição da imagem...');
         const baseImage = await Jimp.read(ASSET_BASE_PATH);
-        
-        const iconSize = 420; 
-        const offset = (iconSize / 2) + 15; 
+
+        const iconSize = 420;
+        const offset = (iconSize / 2) + 15;
 
         const cx = baseImage.getWidth() / 2;
         const cy = baseImage.getHeight() / 2;
@@ -85,36 +126,124 @@ async function gerarImagemSantuario(perks) {
             { x: cx - (iconSize / 2), y: cy - (iconSize / 2) + offset }   // Baixo (⬇️)
         ];
 
-        for (let i = 0; i < Math.min(perks.length, 4); i++) {
-            const perk = perks[i];
-            if (!perk.image) continue;
+        // Baixa os 4 ícones em paralelo (bem mais rápido que um por um)
+        const selecionadas = perks.slice(0, 4);
+        const icones = await Promise.all(selecionadas.map(perk => (perk.image ? baixarIcone(perk) : null)));
 
-            const iconUrl = `https://cdn.nightlight.gg/img/${perk.image}`;
-            
-            const response = await axios.get(iconUrl, { responseType: 'arraybuffer' });
-            
-            const pngBuffer = await sharp(Buffer.from(response.data))
-                .png()
-                .toBuffer();
-
-            const perkIcon = await Jimp.read(pngBuffer);
-
-            perkIcon.resize(iconSize, iconSize);
-
-            baseImage.composite(perkIcon, positions[i].x, positions[i].y, {
+        icones.forEach((icone, i) => {
+            if (!icone) return;
+            icone.resize(iconSize, iconSize);
+            baseImage.composite(icone, positions[i].x, positions[i].y, {
                 mode: Jimp.BLEND_SOURCE_OVER,
                 opacitySource: 1
             });
-        }
+        });
 
-        await baseImage.writeAsync(TEMP_IMAGE_PATH);
-        console.log('✅ Imagem composta gerada com sucesso e centralizada!');
-        
-        return new AttachmentBuilder(TEMP_IMAGE_PATH, { name: 'shrine.png' });
+        // Em memória: sem arquivo temporário, então dois /shrine ao mesmo tempo não se atropelam
+        const buffer = await baseImage.getBufferAsync(Jimp.MIME_PNG);
+        if (chave) cacheImagem = { chave, buffer };
+        console.log('✅ Imagem composta gerada com sucesso!');
+        return buffer;
     } catch (error) {
         console.error('❌ Erro ao gerar a imagem:', error);
         return null;
     }
+}
+
+// ───────────────────────── Datas ─────────────────────────
+function lerDataUTC(valor) {
+    if (!valor) return null;
+    // A API manda "2026-11-03T15:00:00" sem fuso: é UTC
+    const texto = /([zZ]|[+-]\d{2}:?\d{2})$/.test(valor) ? valor : `${valor}Z`;
+    const data = new Date(texto);
+    return Number.isNaN(data.getTime()) ? null : data;
+}
+
+function calcularPeriodoPadrao() {
+    const agora = new Date();
+    const inicio = new Date(agora);
+    const diaSemana = inicio.getUTCDay();
+
+    let diasParaTerca = (diaSemana >= 2) ? (diaSemana - 2) : (diaSemana + 5);
+    if (diaSemana === 2 && agora.getUTCHours() < 15) {
+        diasParaTerca += 7;
+    }
+
+    inicio.setUTCDate(inicio.getUTCDate() - diasParaTerca);
+    inicio.setUTCHours(15, 0, 0, 0);
+
+    const fim = new Date(inicio);
+    fim.setUTCDate(fim.getUTCDate() + 7);
+    return { inicio, fim };
+}
+
+function obterPeriodo(santuario) {
+    const inicio = lerDataUTC(santuario.start);
+    let fim = lerDataUTC(santuario.end);
+    if (!inicio || !fim) return calcularPeriodoPadrao();
+    // "14:59:59" → arredonda para 15:00 (12:00 em Brasília)
+    if (fim.getUTCSeconds() === 59) fim = new Date(fim.getTime() + 1000);
+    return { inicio, fim };
+}
+
+// ───────────────────────── Montagem da embed ─────────────────────────
+function tipoDoPersonagem(personagem) {
+    if (!personagem) return { emoji: '🎲', rotulo: 'Perk geral' };
+    return /^The\s/i.test(personagem)
+        ? { emoji: '🔪', rotulo: 'Assassino' }
+        : { emoji: '🏃', rotulo: 'Sobrevivente' };
+}
+
+function linkPerk(nomePerk) {
+    // "A Nurse's Calling" → https://nightlight.gg/perks/A_Nurse%27s_Calling
+    const slug = encodeURIComponent(nomePerk.replace(/ /g, '_'))
+        .replace(/'/g, '%27')
+        .replace(/\(/g, '%28')
+        .replace(/\)/g, '%29');
+    return URL_PERKS_NIGHTLIGHT + slug;
+}
+
+function montarCampoPerk(perk, index) {
+    const tipo = tipoDoPersonagem(perk.character);
+    const linhas = [`${tipo.emoji} ${perk.character || tipo.rotulo}`];
+
+    if (Number.isFinite(perk.shards)) {
+        linhas.push(`💎 ${formatarNumero(perk.shards)} fragmentos`);
+    }
+
+    const popularidade = POPULARIDADE[perk.usage_tier];
+    if (popularidade) {
+        linhas.push(`📊 ${popularidade.barra} ${popularidade.texto}`);
+    }
+
+    return {
+        name: `${POSICOES_EMOJI[index] || '•'} ${perk.name || 'Desconhecida'}`,
+        value: linhas.join('\n'),
+        inline: true
+    };
+}
+
+function montarCamposEmGrade(perks) {
+    // Grade 2x2 que espelha o losango da imagem (o 3º campo invisível força 2 por linha no PC)
+    const campos = [];
+    perks.forEach((perk, i) => {
+        campos.push(montarCampoPerk(perk, i));
+        if (i % 2 === 1) campos.push({ name: ESPACO, value: ESPACO, inline: true });
+    });
+    return campos;
+}
+
+function montarBotoes(perks) {
+    const botoes = perks
+        .filter(perk => perk.name)
+        .slice(0, 5)
+        .map((perk, i) => new ButtonBuilder()
+            .setStyle(ButtonStyle.Link)
+            .setLabel(perk.name.slice(0, 80))
+            .setEmoji(POSICOES_EMOJI[i] || '📖')
+            .setURL(linkPerk(perk.name)));
+
+    return botoes.length ? [new ActionRowBuilder().addComponents(botoes)] : [];
 }
 
 async function buscarSantuarioEmbeds() {
@@ -123,66 +252,58 @@ async function buscarSantuarioEmbeds() {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const dados = await response.json();
 
-        if (!dados || !dados.data || !dados.data.perks) throw new Error('Dados da API em formato inválido');
+        if (!dados || !dados.data || !Array.isArray(dados.data.perks)) throw new Error('Dados da API em formato inválido');
 
-        const agora = new Date();
-        let dataInicio = new Date(agora);
-        let diaSemana = dataInicio.getUTCDay();
-        
-        let diasParaTerca = (diaSemana >= 2) ? (diaSemana - 2) : (diaSemana + 5);
-        
-        if (diaSemana === 2 && agora.getUTCHours() < 15) {
-            diasParaTerca += 7;
-        }
-        
-        dataInicio.setUTCDate(dataInicio.getUTCDate() - diasParaTerca);
-        dataInicio.setUTCHours(15, 0, 0, 0);
+        const santuario = dados.data;
+        const perks = santuario.perks;
+        const { inicio, fim } = obterPeriodo(santuario);
 
-        const dataFim = new Date(dataInicio);
-        dataFim.setUTCDate(dataFim.getUTCDate() + 7);
+        const linhas = [
+            '> *Novas perks chegaram ao Santuário. Garanta as suas antes que a Entidade as leve embora.*',
+            '',
+            `⏳ Renova **${timestampDiscord(fim, 'R')}**`,
+            `📅 ${timestampDiscord(inicio, 'f')}  ➜  ${timestampDiscord(fim, 'f')}`
+        ];
 
-        const formatadorData = new Intl.DateTimeFormat('pt-BR', {
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            timeZone: 'America/Sao_Paulo'
-        });
-
-        const inicioTexto = formatadorData.format(dataInicio).replace(' às ', ' ');
-        const fimTexto = formatadorData.format(dataFim).replace(' às ', ' ');
-
-        let listaPerks = '';
-        if (dados.data.perks.length > 0) {
-            dados.data.perks.forEach((perk, index) => {
-                const nomePerk = perk.name || 'Desconhecido';
-                const emojiPosicao = POSICOES_EMOJI[index] || '•';
-                listaPerks += `${emojiPosicao} **${nomePerk}**\n`;
-            });
-        } else {
-            listaPerks = '⚠️ Nenhuma vantagem encontrada na rotação atual.\n';
+        const destaques = perks.filter(perk => perk.usage_tier === 'veryhigh' && perk.name);
+        if (destaques.length > 0) {
+            const nomes = destaques.map(perk => `**${perk.name}**`).join(' e ');
+            const verbo = destaques.length > 1 ? 'estão' : 'está';
+            linhas.push(`🔥 Destaque: ${nomes} ${verbo} entre as perks mais usadas do jogo`);
         }
 
-        const description = `**Perks**\n\n${listaPerks}\n**Data**\n\nIniciou dia: \`${inicioTexto}\`\nTermina dia: \`${fimTexto}\``;
-
-        const imageAttachment = await gerarImagemSantuario(dados.data.perks);
-        
-        if (!imageAttachment) {
-             throw new Error('Falha na geração da imagem');
+        if (perks.length === 0) {
+            linhas.push('', '⚠️ Nenhuma perk encontrada na rotação atual.');
         }
+
+        const autor = { name: 'Dead by Daylight • Rotação semanal' };
+        const avatarBot = client.user?.displayAvatarURL();
+        if (avatarBot) autor.iconURL = avatarBot;
+
+        const chaveImagem = `${santuario.week ?? 'semana'}:${perks.map(perk => perk.id ?? perk.name).join(',')}`;
+        const imagem = perks.length > 0 ? await gerarImagemSantuario(perks, chaveImagem) : null;
 
         const mainEmbed = new EmbedBuilder()
+            .setColor(COR_SANTUARIO)
+            .setAuthor(autor)
             .setTitle('💠 Santuário dos Segredos')
-            .setColor('#2b2d31')
-            .setDescription(description)
-            .setImage('attachment://shrine.png')
-            .setFooter({ text: CREDITO_BOT, iconURL: URL_FOTO_DEV })
-            .setTimestamp();
+            .setURL(URL_WIKI_SANTUARIO)
+            .setDescription(linhas.join('\n'))
+            .addFields(
+                ...montarCamposEmGrade(perks),
+                { name: ESPACO, value: linhaContato(), inline: false }
+            );
 
-        return { embeds: [mainEmbed], files: [imageAttachment] };
+        // Se a imagem falhar, a embed sai mesmo assim (antes o comando inteiro quebrava)
+        if (imagem) mainEmbed.setImage('attachment://shrine.png');
+
+        return {
+            embeds: [mainEmbed],
+            files: imagem ? [new AttachmentBuilder(imagem, { name: 'shrine.png' })] : [],
+            components: montarBotoes(perks)
+        };
     } catch (error) {
-        console.error('❌ Erro ao buscar API ou gerar imagem:', error.message);
+        console.error('❌ Erro ao buscar API ou montar a embed:', error.message);
         return null;
     }
 }
@@ -202,7 +323,7 @@ async function dispararAtualizacaoGeral() {
         try {
             const canal = await client.channels.fetch(channelId);
             if (canal && canal.isTextBased()) {
-                await canal.send({ content: '🔔 **O Santuário atualizou!**', ...result });
+                await canal.send({ content: '🔔 **O Santuário dos Segredos foi renovado!**', ...result });
                 console.log(`✅ Santuário enviado para o canal ${channelId} no servidor ${guildId}`);
                 enviados++;
             }
@@ -222,7 +343,7 @@ const commands = [
     new SlashCommandBuilder()
         .setName('setcanal')
         .setDescription('Define o canal onde o bot enviará as atualizações automáticas')
-        .addChannelOption(option => 
+        .addChannelOption(option =>
             option.setName('canal')
                 .setDescription('Canal de texto para os anúncios do santuário')
                 .setRequired(true)
@@ -242,7 +363,8 @@ const rest = new REST({ version: '10' }).setToken(TOKEN);
 (async () => {
     try {
         console.log('🔄 Registrando comandos slash...');
-        await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        const registrados = await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
+        for (const comando of registrados) idsComandos[comando.name] = comando.id;
         console.log('✅ Comandos registrados com sucesso!');
     } catch (error) {
         console.error('❌ Erro ao registrar comandos:', error);
@@ -261,7 +383,7 @@ client.once('ready', async () => {
     }, {
         timezone: "America/Sao_Paulo"
     });
-    
+
     console.log('⏰ Agendamento configurado: Toda Terça-feira às 12:05 (BRT)');
 });
 
@@ -270,19 +392,19 @@ client.on('interactionCreate', async interaction => {
 
     if (interaction.commandName === 'setcanal') {
         const canal = interaction.options.getChannel('canal');
-        
+
         salvarCanal(interaction.guildId, canal.id);
-        return interaction.reply({ 
-            content: `✅ Canal de atualizações configurado com sucesso para <#${canal.id}>! O bot enviará o Santuário a cada 7 dias aqui.${CREDITO_TEXTO}`,
-            ephemeral: true 
+        return interaction.reply({
+            content: `✅ Tudo certo! O Santuário dos Segredos será anunciado em <#${canal.id}> toda terça-feira, assim que a rotação renovar.\n-# Quer ver o Santuário agora? Use ${mencionarComando('shrine')}`,
+            ephemeral: true
         });
     }
 
     if (interaction.commandName === 'atualizar') {
         if (interaction.user.id !== SEU_DISCORD_ID) {
-            return interaction.reply({ 
-                content: '❌ Apenas o desenvolvedor do bot pode executar esse comando global.', 
-                ephemeral: true 
+            return interaction.reply({
+                content: '❌ Apenas o desenvolvedor do bot pode executar esse comando global.',
+                ephemeral: true
             });
         }
 
@@ -290,7 +412,7 @@ client.on('interactionCreate', async interaction => {
 
         try {
             const relatorio = await dispararAtualizacaoGeral();
-            await interaction.editReply({ 
+            await interaction.editReply({
                 content: `🚀 **Atualização disparada com sucesso!**\n\n✅ **Enviados:** ${relatorio.enviados} servidor(es)\n❌ **Falhas:** ${relatorio.erros} servidor(es)`
             });
         } catch (error) {
@@ -308,11 +430,11 @@ client.on('interactionCreate', async interaction => {
                 await interaction.editReply(result);
                 console.log(`✅ Comando /shrine executado por ${interaction.user.tag} no servidor ${interaction.guildId}`);
             } else {
-                await interaction.editReply(`❌ Erro ao buscar o Santuário. Tente novamente mais tarde.${CREDITO_TEXTO}`);
+                await interaction.editReply(`❌ Não consegui buscar o Santuário agora. Tente novamente em instantes.\n${linhaContato('Se o problema continuar, avise o desenvolvedor:')}`);
             }
         } catch (error) {
             console.error('❌ Erro no comando /shrine:', error);
-            await interaction.editReply(`❌ Ocorreu um erro ao processar sua solicitação.${CREDITO_TEXTO}`);
+            await interaction.editReply(`❌ Ocorreu um erro ao processar sua solicitação.\n${linhaContato('Se o problema continuar, avise o desenvolvedor:')}`);
         }
     }
 
@@ -324,19 +446,17 @@ client.on('interactionCreate', async interaction => {
             .setDescription('Olá! Sou o **Anthonny Michael**, desenvolvedor deste bot. Fique à vontade para entrar em contato comigo através das minhas redes sociais abaixo, caso tenha algum problema ou dúvida sobre o bot:')
             .setThumbnail(URL_FOTO_DEV)
             .addFields(
-                { 
-                    name: '👨‍💻 Sobre Mim', 
+                {
+                    name: '👨‍💻 Sobre Mim',
                     value: 'Sou um desenvolvedor apaixonado por tecnologia e automação. Este bot foi criado para manter a comunidade atualizada sobre o Santuário dos Segredos!',
-                    inline: false 
+                    inline: false
                 },
-                { 
-                    name: '📱 Redes Sociais', 
+                {
+                    name: '📱 Redes Sociais',
                     value: 'Clique nos botões abaixo para me seguir e acompanhar meu trabalho!',
-                    inline: false 
+                    inline: false
                 }
-            )
-            .setFooter({ text: CREDITO_BOT, iconURL: URL_FOTO_DEV })
-            .setTimestamp();
+            );
 
         const row = new ActionRowBuilder()
             .addComponents(
@@ -371,10 +491,10 @@ client.on('interactionCreate', async interaction => {
                     .setEmoji('💬')
             );
 
-        return interaction.reply({ 
-            embeds: [embedContato], 
+        return interaction.reply({
+            embeds: [embedContato],
             components: [row, row2],
-            ephemeral: true 
+            ephemeral: true
         });
     }
 });
